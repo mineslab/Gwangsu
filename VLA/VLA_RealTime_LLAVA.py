@@ -8,6 +8,7 @@ import os
 import sys
 import re
 import termios
+import tty
 import select
 import datetime
 import ollama  # pip install ollama
@@ -36,9 +37,9 @@ def capture_image(image_path, cap):
     else:
         rospy.logerr("이미지 캡처 실패")
 
-def generate_movement_command(image_filename, previous_log):
+def generate_movement_command(image_filename, previous_log, user_command):
     """
-    현재 이미지와 이전 움직임 기록을 참고하여 llava에게
+    현재 이미지와 이전 움직임 기록, 그리고 사용자가 입력한 명령을 참고하여 llava에게
     (서보아이디, 움직임량) 형식의 명령을 요청합니다.
     
     출력 예시: (6,+1),(5,-1)
@@ -47,6 +48,7 @@ def generate_movement_command(image_filename, previous_log):
     available_servos_info = "사용 가능한 서보: 1, 2, 3, 4, 5, 6 (위치 범위: 0~1000, 초기값: 500)"
     
     prompt = (
+        f"초기 명령: {user_command}\n"
         f"현재 이미지 파일: {image_filename}\n"
         f"이전 움직임 기록:\n{previous_log}\n"
         f"{available_servos_info}\n"
@@ -104,6 +106,11 @@ if __name__ == '__main__':
     previous_log = ""
     step = 1
 
+    # 초기 명령 입력 받기 (명령이 없으면 입력할 때까지 대기)
+    user_command = input("초기 명령을 입력하세요: ").strip()
+    while user_command == "":
+        user_command = input("명령이 비어있습니다. 초기 명령을 입력하세요: ").strip()
+    
     # llava 모델 초기화 (필요 시, ollama 문서 참조)
     # 예: ollama.init_model("llava")
     
@@ -117,7 +124,7 @@ if __name__ == '__main__':
     
     try:
         while not rospy.is_shutdown():
-            # 사용자가 'q' 키를 누르면 종료
+            # 사용자가 'q' 키를 누르면 종료 (목표 달성 대신 임시 종료 조건)
             key = getKey()
             if key == 'q':
                 rospy.loginfo("사용자에 의해 종료 요청됨.")
@@ -131,8 +138,8 @@ if __name__ == '__main__':
             # Step 1: 현재 이미지 캡처
             capture_image(image_filename, cap)
             
-            # Step 2: llava를 호출하여 움직임 명령 생성
-            movement_command = generate_movement_command(image_filename, previous_log)
+            # Step 2: llava를 호출하여 움직임 명령 생성 (초기 명령 포함)
+            movement_command = generate_movement_command(image_filename, previous_log, user_command)
             rospy.loginfo("생성된 움직임 명령: " + movement_command)
             
             # 로그 기록: step 번호, 이미지 파일명, 명령 내용
